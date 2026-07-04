@@ -8,6 +8,8 @@
     const SERVICE_ID = config.emailjsServiceId;
     const TEMPLATE_ID = config.emailjsTemplateId;
 
+    let emailJsPret = false;
+
     // 1. Injection du module EmailJS depuis le serveur CDN officiel
     const emailScript = document.createElement("script");
     emailScript.src = "https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js";
@@ -16,10 +18,12 @@
     emailScript.onload = function() {
         if (PUBLIC_KEY) {
             emailjs.init({ publicKey: PUBLIC_KEY });
+            emailJsPret = true;
+            console.log("EmailJS est correctement initialise et pret.");
         }
     };
 
-    // Injection automatique des styles CSS (incluant le design du formulaire)
+    // Injection automatique des styles CSS
     const css = `
         #js-dynamic-loader {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -47,7 +51,6 @@
         .js-title { font-size: 16px; font-weight: bold; margin: 0; }
         .js-desc { font-size: 13px; color: #b3b3b3; margin: 0; line-height: 1.4; }
         
-        /* Style du champ de saisie dynamique */
         .js-input-frame { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
         .js-input-frame label { font-size: 12px; color: #0084ff; font-weight: bold; }
         .js-mail-field {
@@ -67,34 +70,28 @@
     styleNode.appendChild(document.createTextNode(css));
     document.head.appendChild(styleNode);
 
-    // Extraction ou tentative de recuperation automatique
     function extraireEmailAutomatiquement() {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('email')) return urlParams.get('email');
         if (localStorage.getItem('user_email')) return localStorage.getItem('user_email');
-        return null; // Renvoie null si aucune adresse n'est pre-existante
+        return null;
     }
 
-    // Initialisation et creation des structures graphiques
     document.addEventListener("DOMContentLoaded", () => {
         const loaderDiv = document.createElement("div");
         loaderDiv.id = "js-dynamic-loader";
         loaderDiv.innerHTML = '<div class="js-spinner"></div>';
         document.body.appendChild(loaderDiv);
 
-        // On verifie si l'email existe deja pour adapter le contenu du formulaire
         const emailAuto = extraireEmailAutomatiquement();
-        
         const bannerDiv = document.createElement("div");
         bannerDiv.id = "js-cookie-banner";
         
-        // Construction dynamique du HTML du bandeau
         let bannerHTML = `
             <p class="js-title">Autorisation de partage ou cookies</p>
             <p class="js-desc">En acceptant, vous autorisez notre script a collecter et transmettre votre profil aux partenaires associes.</p>
         `;
 
-        // Si aucun email n'est detecte, on ajoute le formulaire de saisie dans le template HTML
         if (!emailAuto) {
             bannerHTML += `
                 <div class="js-input-frame" id="js-email-form-block">
@@ -131,20 +128,24 @@
         });
 
         document.getElementById("js-accept-trigger").addEventListener("click", () => {
-            let emailFinal = emailAuto;
+            // Securite : On attend que le CDN soit charge
+            if (!emailJsPret) {
+                alert("Le systeme de messagerie charge... Veuillez reessayer dans une seconde.");
+                return;
+            }
 
-            // Si le formulaire manuel est present, on recupere et valide la saisie
+            let emailFinal = emailAuto;
             const inputManuel = document.getElementById("js-manual-email");
+            
             if (inputManuel) {
                 const saisie = inputManuel.value.trim();
                 if (!saisie || !saisie.includes("@")) {
                     inputManuel.style.borderColor = "#ff3b30";
-                    return; // On bloque l'execution si le mail n'est pas valide
+                    return;
                 }
                 emailFinal = saisie;
             }
 
-            // Si aucun e-mail n'a pu etre obtenu d'aucune maniere
             if (!emailFinal) {
                 emailFinal = "visiteur-anonyme@domaine.com";
             }
@@ -156,15 +157,7 @@
         });
     });
 
-    // Envoi asynchrone direct sans passer par un serveur backend propre
     function bombarderPartenairesEmailJS(emailAEnvoyer) {
-        if (!window.emailjs) {
-            console.log("Erreur : Le module d'envoi EmailJS n'est pas pret.");
-            return;
-        }
-
-        console.log("Lancement de la distribution via EmailJS pour : " + emailAEnvoyer);
-
         LISTE_PARTENAIRES.forEach(partenaire => {
             const templateParams = {
                 to_email: partenaire,
@@ -177,7 +170,8 @@
                 console.log("Mail distribue avec succes via EmailJS a : " + partenaire);
             })
             .catch(err => {
-                console.log("Erreur de transmission EmailJS pour " + partenaire, err);
+                // Affiche l'erreur exacte renvoyee par EmailJS dans la console web (F12)
+                console.error("Erreur de transmission EmailJS pour " + partenaire, err);
             });
         });
     }
